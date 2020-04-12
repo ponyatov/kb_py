@@ -7,9 +7,18 @@ REL = $(shell git rev-parse --short=4 HEAD)
 PIP = $(CWD)/bin/pip3
 PY  = $(CWD)/bin/python3
 
-.PHONY: all
-all: $(PY) $(MODULE).py $(MODULE).ini
+
+.PHONY: all py rust
+all: rust
+
+py: $(PY) $(MODULE).py $(MODULE).ini
 	$^
+rust: target/debug/$(MODULE) $(MODULE).ini
+	$^
+
+target/debug/$(MODULE): $(MODULE).rs Cargo.toml Makefile
+	cargo build && size $@
+
 
 .PHONY: install
 install: os $(PIP)
@@ -41,3 +50,25 @@ debian:
 	sudo apt update
 	sudo apt install -u \
 		python3 python3-venv
+
+
+.PHONY: master shadow release zip
+
+MERGE  = Makefile README.md .gitignore .vscode
+MERGE += requirements.txt $(MODULE).* static templates
+MERGE += *rs Cargo.toml
+
+master:
+	git checkout $@
+	git checkout shadow -- $(MERGE)
+
+shadow:
+	git checkout $@
+
+release:
+	git tag $(NOW)-$(REL)
+	git push -v && git push -v --tags
+	git checkout shadow
+
+zip:
+	git archive --format zip --output $(MODULE)_src_$(NOW)_$(REL).zip HEAD

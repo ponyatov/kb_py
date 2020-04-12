@@ -1,4 +1,4 @@
-#  kb
+#  ![logo](static/logo.png) kb
 ## Knowledge Base engine /multilingual/
 
 (c) Dmitry Ponyatov <<dponyatov@gmail.com>> 2020 MIT

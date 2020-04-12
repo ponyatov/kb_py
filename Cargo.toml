@@ -1,0 +1,24 @@
+[package]
+name = "kb"
+version = "0.0.1"
+authors = ["Dmitry Ponyatov <dponyatov@gmail.com>"]
+description = "Knowledge Base engine"
+documentation = "https://github.com/ponyatov/jupy/blob/public/nb/EDS.ipynb"
+readme = "README.md"
+license = "MIT"
+include = ["*.rs", "Cargo.toml"]
+publish = false
+
+[dependencies]
+
+[[bin]]
+name = "kb"
+path = "kb.rs"
+
+[profile.dev]
+opt-level = 0
+lto = false
+debug = true
+debug-assertions = true
+codegen-units = 1
+panic = 'unwind'
