@@ -4,6 +4,14 @@
 
 use std::env;
 
+// pub enum Object {
+//     Object(String),
+//     Symbol(String),
+//     Number(f32),
+//     Integer(i32),
+//     Operator(String),
+// }
+
 fn main() {
     let argc: usize = env::args().count();
     assert!(argc > 1);
@@ -12,5 +20,8 @@ fn main() {
     for arg in argv {
         println!("argv[{:?}] = {:?}", argi, arg);
         argi += 1;
+    }
+    for i in 0..5 {
+        println!("{} {}", i, if i % 2 == 0 { "even" } else { "odd" })
     }
 }

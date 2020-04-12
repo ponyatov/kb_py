@@ -6,13 +6,13 @@ REL = $(shell git rev-parse --short=4 HEAD)
 
 PIP = $(CWD)/bin/pip3
 PY  = $(CWD)/bin/python3
-
+PYT = $(CWD)/bin/pytest
 
 .PHONY: all py rust
-all: rust
+all:
 
-py: $(PY) $(MODULE).py $(MODULE).ini
-	$^
+py: $(MODULE).py $(MODULE).ini
+	$(PYT) --quiet $< && $(PY) $^
 rust: target/debug/$(MODULE) $(MODULE).ini
 	$^
 
@@ -32,7 +32,7 @@ update: os $(PIP)
 
 $(PIP) $(PY):
 	python3 -m venv .
-	$(CWD)/bin/pip3 install -U pip pylint autopep8
+	$(CWD)/bin/pip3 install -U pip pytest pylint autopep8
 
 .PHONY: requirements.txt
 requirements.txt: $(PIP)
