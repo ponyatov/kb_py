@@ -1,0 +1,22 @@
+<head>
+<title>{{ctx.head(test=True)}}</title>
+<link rel="shortcut icon" href="{{ctx['LOGO'].val}}">
+<link rel="stylesheet" href="/css.css">
+{% block head %}
+{% endblock %}
+</head>
+
+<body>
+{% block body %}
+{% endblock %}
+{% block form %}
+<form id=cli method=post>
+{{form.hidden_tag()}}
+{{form.pad()}}
+{{form.go()}}
+</form>
+{% endblock %}
+</body>
+
+{% block script %}
+{% endblock %}

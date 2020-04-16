@@ -8,11 +8,12 @@ PIP = $(CWD)/bin/pip3
 PY  = $(CWD)/bin/python3
 PYT = $(CWD)/bin/pytest
 
-.PHONY: all py rust
+.PHONY: all py $(MODULE).log rust
 all:
 
-py: $(MODULE).py $(MODULE).ini
-	$(PYT) --quiet $< && $(PY) $^
+py: $(MODULE).log
+$(MODULE).log: $(MODULE).py $(MODULE).ini
+	$(PYT) --quiet $< && $(PY) $^ > $@ && tail $@
 rust: target/debug/$(MODULE) $(MODULE).ini
 	$^
 
@@ -54,9 +55,9 @@ debian:
 
 .PHONY: master shadow release zip
 
-MERGE  = Makefile README.md .gitignore .vscode
-MERGE += requirements.txt $(MODULE).* static templates
-MERGE += *rs Cargo.toml
+MERGE  = Makefile README.md .gitignore .vscode doc
+MERGE += requirements.txt $(MODULE).py $(MODULE).ini static templates
+MERGE += $(MODULE).rs Cargo.toml
 
 master:
 	git checkout $@

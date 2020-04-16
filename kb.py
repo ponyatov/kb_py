@@ -4,31 +4,33 @@
 
 def comment(text, width=80):
     print('#' * (width - len(text) - 1) + ' ' + text)
-# comment('document')
+# comment('computation', 60)
 
 
-######################################################################## modules
-
+################################################################# system modules
 
 import os, sys
 import pytest
 
 ############################################################# object graph types
 
-## base object graph node class
+################################################################ base node class
+
 class Object:
 
     def __init__(self, V):
-        ## type/class tag
+        # type/class tag
         self.type = self.__class__.__name__.lower()
-        ## scalar value
+        # scalar value
         self.val = V
-        ## attributes = associative array
+        # attributes = associative array
         self.slot = {}
-        ## nested elements = vector = stack
+        # nested elements = vector = stack
         self.nest = []
+        # unical storage id
+        self.sid = id(self)
 
-    ## @name dump
+    ################################################## text dump
 
     def __repr__(self): return self.dump()
 
@@ -63,7 +65,7 @@ class Object:
         if test:
             return header
         else:
-            return header + ' @%x' % id(self)
+            return header + ' @%x' % self.sid
 
     ## tab padding
     def pad(self, depth):
@@ -73,7 +75,7 @@ class Object:
     def _val(self):
         return '%s' % self.val
 
-    ## @name operators
+    ################################################## operators
 
     ## `A[key]`
     def __getitem__(self, key):
@@ -97,10 +99,15 @@ class Object:
         self.nest.append(that)
         return self
 
-    ## @name evaluate graph
+    ########################################### stack operations
 
-    def eval(self, ctx): return self
+    ################################################ computation
 
+    def eval(self, ctx):
+        raise TypeError(Error('eval') // self // ctx)
+
+    def apply(self, that, ctx):
+        raise TypeError(Error('apply') // self // that // ctx)
 
 class TestObject:
 
@@ -140,14 +147,19 @@ class TestObject:
         assert(hello['key'].test()
                == '\n<object:World>')
 
+############################################################### error processing
 
-###################################################################### primitive
+class Error(Object):
+    pass
 
+##################################################################### primitives
 
 class Primitive(Object):
-    pass
+    def eval(self, ctx): return self
+
 class Symbol(Primitive):
-    pass
+    def eval(self, ctx): return ctx[self.val]
+
 class String(Primitive):
     pass
 
@@ -216,13 +228,35 @@ class Block(Active, Vector):
 
 class Op(Active):
     def eval(self, ctx):
+        if self.val == '`':
+            return self.nest[0]
+        lvalue = self.nest[0].eval(ctx)
+        rvalue = self.nest[1].eval(ctx)
         if self.val == '=':
-            ctx[self.nest[0].val] = self.nest[1]
-            return self.nest[1]
-        return Active.eval(self, ctx)
+            ctx[lvalue.val] = rvalue
+            return rvalue
+        elif self.val == '//':
+            return lvalue // rvalue
+        elif self.val == '<<':
+            return lvalue << rvalue
+        elif self.val == '>>':
+            return lvalue >> rvalue
+        elif self.val == ':':
+            return lvalue.apply(rvalue, ctx)
+        else:
+            raise SyntaxError(self)
 
 class Command(Active):
-    pass
+    def __init__(self, F):
+        Active.__init__(self, F.__name__)
+        self.fn = F
+
+    def eval(self, ctx):
+        return self.fn(ctx)
+
+    def apply(self, that, ctx):
+        return self.fn(that, ctx)
+
 class VM(Active):
     pass
 
@@ -232,28 +266,87 @@ vm << vm
 
 ########################################################################### meta
 
+class Meta(Object):
+    pass
+
+class Class(Meta):
+    def __init__(self, C):
+        Meta.__init__(self, C.__name__.lower())
+        self.cls = C
+
+    def apply(self, that, ctx):
+        return self.cls(that.val)
 
 ############################################################################# io
 
 class IO(Object):
     pass
+class File(IO):
+    pass
+
+
+vm >> Class(File)
 
 ############################################################################ net
 
 class Net(IO):
     pass
-class IP(Net):
+class IP(Net, Primitive):
     pass
-class Port(Net):
+
+class Port(Net, Primitive):
+    pass
+
+
+vm >> Class(Port)
+
+class URL(Net, Primitive):
+    pass
+class Email(Net, Primitive):
     pass
 
 ################################################################## web interface
 
 
-import flask
+import flask, flask_wtf, wtforms
 
 class Web(Net):
-    pass
+    def eval(self, ctx):
+
+        app = flask.Flask(self.val)
+        app.config['SECRET_KEY'] = os.urandom(32)
+
+        class CLI(flask_wtf.FlaskForm):
+            pad = wtforms.TextAreaField('pad',
+                                        render_kw={'rows': 5, 'autofocus': 'true'},)
+            go = wtforms.SubmitField('GO: Ctrl+Enter')
+
+        @app.route('/')
+        def index():
+            form = CLI()
+            return flask.render_template('index.html', web=self, ctx=ctx, form=form)
+
+        @app.route('/css.css')
+        def css():
+            return flask.Response(
+                flask.render_template('css.css', web=self, ctx=ctx),
+                mimetype='text/css')
+
+        @app.route('/static/<path:path>')
+        def statics(path):
+            return app.send_static_file(path)
+
+        app.run(
+            host=ctx['IP'].val, port=ctx['PORT'].val,
+            debug=True, extra_files=['kb.ini'])
+
+def WEB(that, ctx):
+    web = ctx['WEB'] = Web(that.val)
+    web << ctx['IP'] << ctx['PORT'] << ctx['LOGO']
+    return web.eval(ctx)
+
+
+vm >> Command(WEB)
 
 ####################################################################### document
 
@@ -274,15 +367,18 @@ class Color(Doc):
 import ply.lex as lex
 
 tokens = ['nl', 'lq', 'rq', 'lc', 'rc',
-          'eq',
+          'eq', 'tick', 'push', 'lshift', 'rshift', 'colon',
           'symbol', 'string',
           'number', 'integer', 'hex', 'bin',
+          'url', 'email', 'ip',
           'end']
 
 t_ignore = ' \t\r'
 t_ignore_comment = r'\#.*'
 
 states = (('str', 'exclusive'),)
+
+t_str_ignore = ''
 
 def t_str(t):
     r'\''
@@ -317,8 +413,28 @@ def t_bin(t):
     t.value = Bin(t.value)
     return t
 
+def t_tick(t):
+    r'`'
+    t.value = Op(t.value)
+    return t
+def t_colon(t):
+    r':'
+    t.value = Op(t.value)
+    return t
 def t_eq(t):
-    r'\='
+    r'='
+    t.value = Op(t.value)
+    return t
+def t_push(t):
+    r'//'
+    t.value = Op(t.value)
+    return t
+def t_lshift(t):
+    r'<<'
+    t.value = Op(t.value)
+    return t
+def t_rshift(t):
+    r'>>'
     t.value = Op(t.value)
     return t
 
@@ -326,8 +442,21 @@ def t_end(t):
     r'\.end'
     return t
 
+def t_url(t):
+    r'https?://[^ \t\r\n]+'
+    t.value = URL(t.value)
+    return t
+def t_email(t):
+    r'[a-z]+@[^ \t\r\n]+'
+    t.value = Email(t.value)
+    return t
+def t_ip(t):
+    r'([0-9]{1,3}\.){3}[0-9]{1,3}'
+    t.value = IP(t.value)
+    return t
+
 def t_symbol(t):
-    r'[^ \t\r\n\#\{\}\[\]]+'
+    r'[^ \t\r\n\#\{\}\[\]:]+'
     t.value = Symbol(t.value)
     return t
 
@@ -340,6 +469,14 @@ lexer = lex.lex()
 
 import ply.yacc as yacc
 
+precedence = (
+    ('right', 'eq'),
+    ('left', 'push'),
+    ('left', 'lshift', 'rshift'),
+    ('nonassoc', 'tick', 'colon'),
+)
+
+
 def p_REPL_none(p):
     ' REPL : '
     pass
@@ -350,9 +487,8 @@ def p_REPL_recursuve(p):
     ' REPL : REPL ex '
     print(p[2])
     print(p[2].eval(vm))
-    print(vm)
+    # print(vm)
     print('-' * 80)
-
 def p_REPL_end(p):
     r' REPL : REPL end '
     sys.exit(0)
@@ -363,50 +499,74 @@ def p_ex_symbol(p):
 def p_ex_string(p):
     ' ex : string '
     p[0] = p[1]
-def p_ex_number(p):
-    ' ex : number '
+# def p_ex_number(p):
+#     ' ex : number '
+#     p[0] = p[1]
+# def p_ex_integer(p):
+#     ' ex : integer '
+#     p[0] = p[1]
+# def p_ex_hex(p):
+#     ' ex : hex '
+#     p[0] = p[1]
+# def p_ex_bin(p):
+#     ' ex : bin '
+#     p[0] = p[1]
+def p_ex_url(p):
+    ' ex : url '
     p[0] = p[1]
-def p_ex_integer(p):
-    ' ex : integer '
+def p_ex_email(p):
+    ' ex : email '
     p[0] = p[1]
-def p_ex_hex(p):
-    ' ex : hex '
-    p[0] = p[1]
-def p_ex_bin(p):
-    ' ex : bin '
+def p_ex_ip(p):
+    ' ex : ip '
     p[0] = p[1]
 
+def p_ex_tick(p):
+    ' ex : tick ex '
+    p[0] = p[1] // p[2]
+def p_ex_colon_sym(p):
+    ' ex : symbol colon symbol '
+    p[0] = p[2] // p[1] // (Op('`') // p[3])
 def p_ex_eq(p):
-    r' ex : symbol eq ex '
+    ' ex : symbol eq ex '
+    p[0] = p[2] // (Op('`') // p[1]) // p[3]
+def p_ex_push(p):
+    ' ex : ex push ex '
+    p[0] = p[2] // p[1] // p[3]
+def p_ex_lshift(p):
+    ' ex : ex lshift ex '
+    p[0] = p[2] // p[1] // p[3]
+def p_ex_rshift(p):
+    ' ex : ex rshift ex '
     p[0] = p[2] // p[1] // p[3]
 
-def p_vector_named(p):
-    ' ex : symbol lq vector rq '
-    p[0] = p[3]
-    p[0].val = p[1].val
-def p_vector(p):
-    ' ex : lq vector rq '
-    p[0] = p[2]
-def p_vector_none(p):
-    ' vector : '
-    p[0] = Vector('')
-def p_vector_ex(p):
-    ' vector : vector ex '
-    p[0] = p[1] // p[2]
+# def p_vector_named(p):
+#     ' ex : symbol lq vector rq '
+#     p[0] = p[3]
+#     p[0].val = p[1].val
+# def p_vector(p):
+#     ' ex : lq vector rq '
+#     p[0] = p[2]
+# def p_vector_none(p):
+#     ' vector : '
+#     p[0] = Vector('')
+# def p_vector_ex(p):
+#     ' vector : vector ex '
+#     p[0] = p[1] // p[2]
 
-def p_block_named(p):
-    ' ex : symbol lc block rc '
-    p[0] = p[3]
-    p[0].val = p[1].val
-def p_block(p):
-    ' ex : lc block rc '
-    p[0] = p[2]
-def p_block_none(p):
-    ' block : '
-    p[0] = Block('')
-def p_block_ex(p):
-    ' block : block ex '
-    p[0] = p[1] // p[2]
+# def p_block_named(p):
+#     ' ex : symbol lc block rc '
+#     p[0] = p[3]
+#     p[0].val = p[1].val
+# def p_block(p):
+#     ' ex : lc block rc '
+#     p[0] = p[2]
+# def p_block_none(p):
+#     ' block : '
+#     p[0] = Block('')
+# def p_block_ex(p):
+#     ' block : block ex '
+#     p[0] = p[1] // p[2]
 
 def p_error(p): raise SyntaxError(p)
 
@@ -416,8 +576,6 @@ parser = yacc.yacc(debug=False, write_tables=False)
 #################################################################### system init
 
 if __name__ == '__main__':
-    print(vm)
     for srcfile in sys.argv[1:]:
-        print('%s:' % srcfile)
         with open(srcfile) as src:
             parser.parse(src.read())
